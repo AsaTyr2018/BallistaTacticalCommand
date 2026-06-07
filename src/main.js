@@ -69,6 +69,8 @@ const environment = {
 };
 
 const setupDurationSeconds = 600;
+const quickNoteStorageKey = "ballista.quickNoteLayout";
+const quickNoteDefaultLayout = { x: null, y: null, width: 260, height: 122 };
 
 const mapConfig = {
   baseScale: 0.13,
@@ -182,6 +184,7 @@ const state = {
   resultOpen: false,
   result: null,
   quickNote: "",
+  quickNoteLayout: loadQuickNoteLayout(),
   revealedTarget: false,
   busy: null,
   trajectory: [],
@@ -489,12 +492,14 @@ function render() {
         <div class="mini-gauge"><span>Fire Data</span><strong>${state.firingElevation ? `${state.firingElevation} deg` : "--"}</strong></div>
       </div>
 
-      <aside class="quick-note">
-        <div class="quick-note-head">
+      <aside class="quick-note" style="${quickNoteStyle()}">
+        <div class="quick-note-head" id="quickNoteDragHandle" title="Drag note">
           <strong>Quick Note</strong>
           <span>${state.quickNote.length}/240</span>
+          <button id="quickNoteResetBtn" type="button" title="Reset note position">Reset</button>
         </div>
         <textarea id="quickNote" maxlength="240" spellcheck="false" placeholder="scratch bearings, range, charge...">${escapeHtml(state.quickNote)}</textarea>
+        <div id="quickNoteResizeHandle" class="quick-note-resize" title="Resize note"></div>
       </aside>
     </main>
   `;
@@ -561,6 +566,9 @@ function bindEvents() {
     state.quickNote = event.target.value;
     document.querySelector(".quick-note-head span").textContent = `${state.quickNote.length}/240`;
   });
+  document.querySelector("#quickNoteDragHandle")?.addEventListener("pointerdown", startQuickNoteDrag);
+  document.querySelector("#quickNoteResizeHandle")?.addEventListener("pointerdown", startQuickNoteResize);
+  document.querySelector("#quickNoteResetBtn")?.addEventListener("click", resetQuickNoteLayout);
   document.querySelector("#undoLineBtn").addEventListener("click", undoLine);
   document.querySelector("#clearLinesBtn").addEventListener("click", clearLines);
   canvas.addEventListener("pointerdown", handleMapPointerDown);
@@ -775,6 +783,109 @@ function appendQuickNote(note) {
   if (quickNote) quickNote.value = state.quickNote;
   const counter = document.querySelector(".quick-note-head span");
   if (counter) counter.textContent = `${state.quickNote.length}/240`;
+}
+
+function quickNoteStyle() {
+  const layout = clampQuickNoteLayout(state.quickNoteLayout);
+  state.quickNoteLayout = layout;
+  const x = layout.x ?? Math.max(12, window.innerWidth - layout.width - 12);
+  const y = layout.y ?? Math.max(82, window.innerHeight - layout.height - 82);
+  return `left: ${x}px; top: ${y}px; width: ${layout.width}px; height: ${layout.height}px;`;
+}
+
+function loadQuickNoteLayout() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(quickNoteStorageKey));
+    if (!stored) return { ...quickNoteDefaultLayout };
+    return {
+      x: Number.isFinite(stored.x) ? stored.x : null,
+      y: Number.isFinite(stored.y) ? stored.y : null,
+      width: Number.isFinite(stored.width) ? stored.width : quickNoteDefaultLayout.width,
+      height: Number.isFinite(stored.height) ? stored.height : quickNoteDefaultLayout.height,
+    };
+  } catch {
+    return { ...quickNoteDefaultLayout };
+  }
+}
+
+function saveQuickNoteLayout() {
+  localStorage.setItem(quickNoteStorageKey, JSON.stringify(state.quickNoteLayout));
+}
+
+function clampQuickNoteLayout(layout) {
+  const minWidth = 220;
+  const minHeight = 118;
+  const maxWidth = Math.max(minWidth, window.innerWidth - 24);
+  const maxHeight = Math.max(minHeight, window.innerHeight - 24);
+  const width = clamp(layout.width, minWidth, maxWidth);
+  const height = clamp(layout.height, minHeight, maxHeight);
+  const fallbackX = Math.max(12, window.innerWidth - width - 12);
+  const fallbackY = Math.max(82, window.innerHeight - height - 82);
+  return {
+    x: clamp(layout.x ?? fallbackX, 8, Math.max(8, window.innerWidth - width - 8)),
+    y: clamp(layout.y ?? fallbackY, 8, Math.max(8, window.innerHeight - height - 8)),
+    width,
+    height,
+  };
+}
+
+function applyQuickNoteLayout() {
+  const element = document.querySelector(".quick-note");
+  if (!element) return;
+  state.quickNoteLayout = clampQuickNoteLayout(state.quickNoteLayout);
+  element.style.left = `${state.quickNoteLayout.x}px`;
+  element.style.top = `${state.quickNoteLayout.y}px`;
+  element.style.width = `${state.quickNoteLayout.width}px`;
+  element.style.height = `${state.quickNoteLayout.height}px`;
+}
+
+function startQuickNoteDrag(event) {
+  if (event.target.closest("button")) return;
+  const start = {
+    x: event.clientX,
+    y: event.clientY,
+    layout: { ...clampQuickNoteLayout(state.quickNoteLayout) },
+  };
+  event.currentTarget.setPointerCapture(event.pointerId);
+  const move = (moveEvent) => {
+    state.quickNoteLayout.x = start.layout.x + moveEvent.clientX - start.x;
+    state.quickNoteLayout.y = start.layout.y + moveEvent.clientY - start.y;
+    applyQuickNoteLayout();
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    saveQuickNoteLayout();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up, { once: true });
+}
+
+function startQuickNoteResize(event) {
+  const start = {
+    x: event.clientX,
+    y: event.clientY,
+    layout: { ...clampQuickNoteLayout(state.quickNoteLayout) },
+  };
+  event.currentTarget.setPointerCapture(event.pointerId);
+  const move = (moveEvent) => {
+    state.quickNoteLayout.width = start.layout.width + moveEvent.clientX - start.x;
+    state.quickNoteLayout.height = start.layout.height + moveEvent.clientY - start.y;
+    applyQuickNoteLayout();
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    saveQuickNoteLayout();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up, { once: true });
+}
+
+function resetQuickNoteLayout() {
+  state.quickNoteLayout = { ...quickNoteDefaultLayout };
+  saveQuickNoteLayout();
+  render();
 }
 
 function checkRow(key, label) {
