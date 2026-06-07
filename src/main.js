@@ -80,7 +80,7 @@ const mapConfig = {
   majorHeight: 760 / 9,
   columns: 12,
   rows: 9,
-  minZoom: 1,
+  minZoom: 0.8,
   maxZoom: 3.2,
 };
 
@@ -1142,7 +1142,6 @@ function handleMapMove(event) {
     }
     state.mapOffset.x += dx * (canvas.width / canvas.getBoundingClientRect().width);
     state.mapOffset.y += dy * (canvas.height / canvas.getBoundingClientRect().height);
-    clampMapOffset();
     mapDrag.lastX = event.clientX;
     mapDrag.lastY = event.clientY;
     drawMap();
@@ -1520,7 +1519,6 @@ function simulateShot({ bearingDeg, elevationDeg, ammoKey, chargeLevel, fuseMode
 }
 
 function drawMap() {
-  normalizeMapView();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#141a18";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1545,51 +1543,8 @@ function drawMap() {
 
 function drawGrid() {
   const { majorWidth, majorHeight, columns, rows } = mapConfig;
-  const bounds = getGridScreenBounds();
-  ctx.lineWidth = 1;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(bounds.left, bounds.top, bounds.width, bounds.height);
-  ctx.clip();
-
-  ctx.strokeStyle = "rgba(86, 101, 92, 0.16)";
-  for (let col = 0; col < columns; col += 1) {
-    for (let sub = 1; sub < 10; sub += 1) {
-      const x = mapBaseToScreenX(col * majorWidth + (majorWidth / 10) * sub);
-      if (x < bounds.left - 1 || x > bounds.right + 1) continue;
-      ctx.beginPath();
-      ctx.moveTo(x, bounds.top);
-      ctx.lineTo(x, bounds.bottom);
-      ctx.stroke();
-    }
-  }
-  for (let row = 0; row < rows; row += 1) {
-    for (let sub = 1; sub < 10; sub += 1) {
-      const y = mapBaseToScreenY(row * majorHeight + (majorHeight / 10) * sub);
-      if (y < bounds.top - 1 || y > bounds.bottom + 1) continue;
-      ctx.beginPath();
-      ctx.moveTo(bounds.left, y);
-      ctx.lineTo(bounds.right, y);
-      ctx.stroke();
-    }
-  }
-
-  ctx.strokeStyle = "#26322d";
-  for (let col = 0; col <= columns; col += 1) {
-    const x = mapBaseToScreenX(col * majorWidth);
-    ctx.beginPath();
-    ctx.moveTo(x, bounds.top);
-    ctx.lineTo(x, bounds.bottom);
-    ctx.stroke();
-  }
-  for (let row = 0; row <= rows; row += 1) {
-    const y = mapBaseToScreenY(row * majorHeight);
-    ctx.beginPath();
-    ctx.moveTo(bounds.left, y);
-    ctx.lineTo(bounds.right, y);
-    ctx.stroke();
-  }
-  ctx.restore();
+  drawRepeatingGridLines(majorWidth / 10, majorHeight / 10, "rgba(86, 101, 92, 0.16)");
+  drawRepeatingGridLines(majorWidth, majorHeight, "#26322d");
 
   ctx.fillStyle = "#59665e";
   ctx.font = "600 15px sans-serif";
@@ -1612,32 +1567,36 @@ function drawGrid() {
   ctx.textAlign = "start";
   ctx.textBaseline = "alphabetic";
 
-  if (state.mapZoom >= 2.05) drawSubgridLabels(bounds);
+  if (state.mapZoom >= 2.05) drawSubgridLabels();
 }
 
-function getGridScreenBounds() {
-  const { majorWidth, majorHeight, columns, rows } = mapConfig;
-  const left = mapBaseToScreenX(0);
-  const top = mapBaseToScreenY(0);
-  const right = mapBaseToScreenX(columns * majorWidth);
-  const bottom = mapBaseToScreenY(rows * majorHeight);
-  return {
-    left,
-    top,
-    right,
-    bottom,
-    width: right - left,
-    height: bottom - top,
-  };
+function drawRepeatingGridLines(baseStepX, baseStepY, color) {
+  const stepX = baseStepX * state.mapZoom;
+  const stepY = baseStepY * state.mapZoom;
+  if (stepX < 2 || stepY < 2) return;
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = color;
+
+  for (let x = positiveModulo(state.mapOffset.x, stepX); x <= canvas.width; x += stepX) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = positiveModulo(state.mapOffset.y, stepY); y <= canvas.height; y += stepY) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
 }
 
-function drawSubgridLabels(bounds) {
+function positiveModulo(value, step) {
+  return ((value % step) + step) % step;
+}
+
+function drawSubgridLabels() {
   const { majorWidth, majorHeight, columns, rows } = mapConfig;
-  const gridBounds = bounds ?? getGridScreenBounds();
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(gridBounds.left, gridBounds.top, gridBounds.width, gridBounds.height);
-  ctx.clip();
   ctx.fillStyle = "rgba(137, 151, 140, 0.44)";
   ctx.font = "9px sans-serif";
   ctx.textBaseline = "middle";
@@ -1669,7 +1628,8 @@ function drawSubgridLabels(bounds) {
       }
     }
   }
-  ctx.restore();
+  ctx.textAlign = "start";
+  ctx.textBaseline = "alphabetic";
 }
 
 function drawPins() {
@@ -2027,33 +1987,13 @@ function zoomMap(factor, focus = { x: canvas.width / 2, y: canvas.height / 2 }) 
   state.mapOffset.x = focus.x - ((focus.x - state.mapOffset.x) / previousZoom) * nextZoom;
   state.mapOffset.y = focus.y - ((focus.y - state.mapOffset.y) / previousZoom) * nextZoom;
   state.mapZoom = nextZoom;
-  clampMapOffset();
   render();
 }
 
 function resetMapZoom() {
   state.mapZoom = minMapZoom();
   state.mapOffset = { x: 0, y: 0 };
-  clampMapOffset();
   render();
-}
-
-function normalizeMapView() {
-  const minimumZoom = minMapZoom();
-  if (state.mapZoom < minimumZoom) state.mapZoom = minimumZoom;
-  clampMapOffset();
-}
-
-function clampMapOffset() {
-  const gridWidth = mapConfig.columns * mapConfig.majorWidth * state.mapZoom;
-  const gridHeight = mapConfig.rows * mapConfig.majorHeight * state.mapZoom;
-  state.mapOffset.x = clampAxisOffset(state.mapOffset.x, gridWidth, canvas.width);
-  state.mapOffset.y = clampAxisOffset(state.mapOffset.y, gridHeight, canvas.height);
-}
-
-function clampAxisOffset(offset, contentSize, viewportSize) {
-  if (contentSize <= viewportSize) return (viewportSize - contentSize) / 2;
-  return clamp(offset, viewportSize - contentSize, 0);
 }
 
 function minMapZoom() {
