@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local server state
+.server/
+vite-server.log
+vite-server.err.log
+
+# Local snapshots and scratch files
+snapshots/
+.chrome*/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Logs
+*.log
+*.tmp
