@@ -10,9 +10,9 @@ const ammoTypes = {
     massKg: 96,
     muzzleVelocity: 520,
     dragCoefficient: 0.000042,
-    blastRadius: 38,
+    blastRadius: 110,
     penetration: 8,
-    scatterMeters: 18,
+    scatterMeters: 24,
     count: 8,
   },
   AP: {
@@ -22,9 +22,9 @@ const ammoTypes = {
     massKg: 112,
     muzzleVelocity: 610,
     dragCoefficient: 0.000035,
-    blastRadius: 100,
+    blastRadius: 28,
     penetration: 80,
-    scatterMeters: 10,
+    scatterMeters: 8,
     count: 5,
   },
   SMOKE: {
@@ -706,8 +706,8 @@ function guidebookSpread() {
       leftTitle: "Ordnance",
       rightTitle: "Special Rounds",
       left: `<dl>
-        <div><dt>HE</dt><dd>Open targets and exposed batteries.</dd></div>
-        <div><dt>AP</dt><dd>Armor, bunkers and hardened structures.</dd></div>
+        <div><dt>HE</dt><dd>Area effect against open targets and exposed batteries.</dd></div>
+        <div><dt>AP</dt><dd>Precision penetrator for armor, bunkers and hardened structures.</dd></div>
         <div><dt>Smoke</dt><dd>Mark impact areas or block sight lines.</dd></div>
       </dl>`,
       right: `<dl>
@@ -1261,6 +1261,7 @@ function resolveImpact(shot) {
     point: shot.impact,
     radius: ammo.blastRadius || ammo.smokeRadius || ammo.lightRadius || 18,
     color: ammo.color,
+    label: ["HE", "AP"].includes(shot.ammoKey) ? `${ammo.label} ROI` : ammo.label,
   });
   state.barrelHeat = Math.min(1, state.barrelHeat + chargeLevels[state.selectedCharge].stress);
 
@@ -1288,6 +1289,7 @@ function resolveIllumination(shot, missDistance) {
     point: shot.impact,
     radius: ammo.lightRadius,
     color: ammo.color,
+    label: `${ammo.label} ROI`,
   });
   state.barrelHeat = Math.min(1, state.barrelHeat + chargeLevels[state.selectedCharge].stress);
 
@@ -1587,13 +1589,19 @@ function drawImpact() {
 function drawEffects() {
   state.effects.forEach((effect) => {
     const p = worldToMap(effect.point);
-    ctx.fillStyle = hexToRgba(effect.color, 0.16);
-    ctx.strokeStyle = hexToRgba(effect.color, 0.55);
-    ctx.lineWidth = 1.5;
+    const offensive = effect.type === "HE" || effect.type === "AP";
+    ctx.fillStyle = hexToRgba(effect.color, offensive ? 0.1 : 0.16);
+    ctx.strokeStyle = offensive ? "#f4d06f" : hexToRgba(effect.color, 0.55);
+    ctx.lineWidth = offensive ? 2.6 : 1.5;
+    if (offensive) ctx.setLineDash([10, 6]);
     ctx.beginPath();
     ctx.arc(p.x, p.y, worldScale(effect.radius), 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    ctx.setLineDash([]);
+    if (offensive) {
+      drawMapLabel(p.x + worldScale(effect.radius) + 8, p.y - 4, effect.label, "#f4d06f");
+    }
   });
 }
 
@@ -1602,20 +1610,34 @@ function drawRevealedTarget() {
   const p = worldToMap(mission.targetPosition);
   const symbol = targetSymbol(mission.profile.key);
   ctx.save();
-  ctx.strokeStyle = "#fff0b5";
-  ctx.fillStyle = "rgba(255, 240, 181, 0.18)";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#ff3f37";
+  ctx.fillStyle = "rgba(255, 63, 55, 0.26)";
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 18, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, 24, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = "#fff0b5";
-  ctx.font = "18px sans-serif";
+  ctx.fillStyle = "#130b0a";
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ff5a52";
+  ctx.font = "bold 16px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(symbol, p.x, p.y);
-  ctx.font = "12px sans-serif";
-  ctx.fillText(mission.profile.label, p.x, p.y + 31);
+  const label = mission.profile.label.toUpperCase();
+  ctx.font = "bold 12px sans-serif";
+  const labelWidth = ctx.measureText(label).width + 14;
+  ctx.fillStyle = "rgba(17, 8, 7, 0.88)";
+  ctx.strokeStyle = "#ff3f37";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(p.x - labelWidth / 2, p.y + 31, labelWidth, 22, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#ff6b62";
+  ctx.fillText(label, p.x, p.y + 42);
   ctx.restore();
 }
 
