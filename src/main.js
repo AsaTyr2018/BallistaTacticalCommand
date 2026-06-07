@@ -76,11 +76,11 @@ const mapConfig = {
   baseScale: 0.13,
   originX: 78,
   originBottom: 88,
-  majorWidth: 90,
-  majorHeight: 82,
+  majorWidth: 1180 / 12,
+  majorHeight: 760 / 9,
   columns: 12,
   rows: 9,
-  minZoom: 0.8,
+  minZoom: 1,
   maxZoom: 3.2,
 };
 
@@ -1142,6 +1142,7 @@ function handleMapMove(event) {
     }
     state.mapOffset.x += dx * (canvas.width / canvas.getBoundingClientRect().width);
     state.mapOffset.y += dy * (canvas.height / canvas.getBoundingClientRect().height);
+    clampMapOffset();
     mapDrag.lastX = event.clientX;
     mapDrag.lastY = event.clientY;
     drawMap();
@@ -1519,6 +1520,7 @@ function simulateShot({ bearingDeg, elevationDeg, ammoKey, chargeLevel, fuseMode
 }
 
 function drawMap() {
+  normalizeMapView();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#141a18";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1652,7 +1654,7 @@ function drawSubgridLabels(bounds) {
       ctx.textAlign = "center";
       for (let subCol = 1; subCol <= 10; subCol += 1) {
         const x = mapBaseToScreenX(left + (subCol - 0.5) * (majorWidth / 10));
-        const y = mapBaseToScreenY(top + 10);
+        const y = mapBaseToScreenY(top + majorHeight / 20);
         if (x > -8 && x < canvas.width + 8 && y > -8 && y < canvas.height + 8) {
           ctx.fillText(String(subCol), x, y);
         }
@@ -2020,18 +2022,44 @@ function handleMapWheel(event) {
 function zoomMap(factor, focus = { x: canvas.width / 2, y: canvas.height / 2 }) {
   if (!canUseMapControls()) return;
   const previousZoom = state.mapZoom;
-  const nextZoom = clamp(previousZoom * factor, mapConfig.minZoom, mapConfig.maxZoom);
+  const nextZoom = clamp(previousZoom * factor, minMapZoom(), mapConfig.maxZoom);
   if (nextZoom === previousZoom) return;
   state.mapOffset.x = focus.x - ((focus.x - state.mapOffset.x) / previousZoom) * nextZoom;
   state.mapOffset.y = focus.y - ((focus.y - state.mapOffset.y) / previousZoom) * nextZoom;
   state.mapZoom = nextZoom;
+  clampMapOffset();
   render();
 }
 
 function resetMapZoom() {
-  state.mapZoom = 1;
+  state.mapZoom = minMapZoom();
   state.mapOffset = { x: 0, y: 0 };
+  clampMapOffset();
   render();
+}
+
+function normalizeMapView() {
+  const minimumZoom = minMapZoom();
+  if (state.mapZoom < minimumZoom) state.mapZoom = minimumZoom;
+  clampMapOffset();
+}
+
+function clampMapOffset() {
+  const gridWidth = mapConfig.columns * mapConfig.majorWidth * state.mapZoom;
+  const gridHeight = mapConfig.rows * mapConfig.majorHeight * state.mapZoom;
+  state.mapOffset.x = clampAxisOffset(state.mapOffset.x, gridWidth, canvas.width);
+  state.mapOffset.y = clampAxisOffset(state.mapOffset.y, gridHeight, canvas.height);
+}
+
+function clampAxisOffset(offset, contentSize, viewportSize) {
+  if (contentSize <= viewportSize) return (viewportSize - contentSize) / 2;
+  return clamp(offset, viewportSize - contentSize, 0);
+}
+
+function minMapZoom() {
+  const gridWidth = mapConfig.columns * mapConfig.majorWidth;
+  const gridHeight = mapConfig.rows * mapConfig.majorHeight;
+  return Math.max(mapConfig.minZoom, canvas.width / gridWidth, canvas.height / gridHeight);
 }
 
 function pointFromBearingDistance(from, bearingDeg, distance) {
