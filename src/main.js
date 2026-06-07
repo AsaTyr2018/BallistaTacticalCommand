@@ -506,8 +506,19 @@ function render() {
 
   canvas = document.querySelector("#map");
   ctx = canvas.getContext("2d");
+  syncCanvasSize();
   bindEvents();
   drawMap();
+}
+
+function syncCanvasSize() {
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  mapConfig.majorWidth = canvas.width / mapConfig.columns;
+  mapConfig.majorHeight = canvas.height / mapConfig.rows;
 }
 
 function bindEvents() {
@@ -2271,3 +2282,8 @@ function hexToRgba(hex, alpha) {
 
 render();
 startMissionClock();
+window.addEventListener("resize", () => {
+  if (!canvas) return;
+  syncCanvasSize();
+  drawMap();
+});

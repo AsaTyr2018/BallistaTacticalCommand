@@ -361,6 +361,12 @@ label {
   padding: 10px;
 }
 
+.map-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
 .pin-tablet {
   position: sticky;
   top: 10px;
@@ -666,11 +672,15 @@ button.dispatch-line:focus-visible,
 
 .map-wrap {
   position: relative;
+  width: 100%;
   aspect-ratio: 16 / 10;
   min-height: 300px;
 }
 
 .main-map {
+  align-self: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
   aspect-ratio: 16 / 10.3;
   min-height: 420px;
   max-height: calc(100vh - 210px);
