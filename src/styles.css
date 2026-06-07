@@ -747,6 +747,10 @@ body:has([data-tool="pan"].active-tool) #map:active {
   cursor: grabbing;
 }
 
+body:has([data-tool="delete"].active-tool) #map {
+  cursor: not-allowed;
+}
+
 body:has([data-pin].active-pin) #map {
   cursor: copy;
 }

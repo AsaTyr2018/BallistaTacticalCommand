@@ -231,7 +231,7 @@ function render() {
           <button id="orderBtn" type="button">Orders</button>
           <button id="logBtn" type="button">Radio</button>
           <span id="phasePill" class="pill">Phase: ${phaseLabel(state.phase)}</span>
-          <button id="startMissionBtn" class="setup-button" type="button" ${state.phase === "Briefing" ? "" : "disabled"}>${missionButtonLabel()}</button>
+          <button id="startMissionBtn" class="setup-button" type="button" ${canUseMissionButton() ? "" : "disabled"}>${missionButtonLabel()}</button>
           <span id="timePill" class="pill">Time: ${state.missionStarted ? formatTime(state.timeRemaining) : "standby"}</span>
           <span id="heatPill" class="pill">Heat: ${Math.round(state.barrelHeat * 100)}%</span>
           <span class="pill">Wind: ${environment.wind.x.toFixed(1)} / ${environment.wind.y.toFixed(1)} m/s</span>
@@ -265,6 +265,7 @@ function render() {
             ${toolButton("yellow", "Y", "Yellow bearing line")}
             ${toolButton("red", "R", "Red range line")}
             ${toolButton("pan", "P", "Pan map")}
+            ${toolButton("delete", "D", "Delete line")}
             <button id="undoLineBtn" type="button" ${canEditMap() ? "" : "disabled"}>Undo</button>
             <button id="clearLinesBtn" type="button" ${canEditMap() ? "" : "disabled"}>Clear</button>
             <div class="zoom-tools" aria-label="Map zoom controls">
@@ -790,6 +791,7 @@ function mapHint() {
   if (state.phase === "Briefing") return "Briefing: use top menu, then Start Mission.";
   if (state.phase === "Setup") return "Setup: place Gun, S1, S2, S3. Lines locked.";
   if (state.tool === "pan") return "Pan: drag map. Wheel zooms.";
+  if (state.tool === "delete") return "Delete: click a line to remove it.";
   if (state.tool === "yellow") return "Yellow: two-click bearing line.";
   if (state.tool === "red") return "Red: two-click range line.";
   return "White: two-click guide line.";
@@ -947,7 +949,7 @@ function freshMissionState() {
   };
 }
 
-function startMission() {
+function startMission(force = false) {
   if (state.phase === "Briefing") {
     state.phase = "Setup";
     state.setupRemaining = setupDurationSeconds;
@@ -957,6 +959,11 @@ function startMission() {
     return;
   }
   if (state.missionStarted || state.phase !== "Setup") return;
+  if (!force && !requiredSetupPinsPlaced()) {
+    log("Setup incomplete. Place Gun, S1, S2 and S3.", "bad");
+    render();
+    return;
+  }
   state.phase = "Plotting";
   state.missionStarted = true;
   state.activePin = null;
@@ -981,6 +988,10 @@ function handleMapClick(event) {
   }
   if (state.tool === "pan") return;
   if (!canEditMap()) return;
+  if (state.tool === "delete") {
+    deleteLineAtEvent(event);
+    return;
+  }
   const point = eventToWorld(event);
   if (!state.lineStart) {
     state.lineStart = point;
@@ -1025,7 +1036,7 @@ function handleMapMove(event) {
     drawMap();
     return;
   }
-  if (!state.lineStart || !canEditMap()) return;
+  if (!state.lineStart || !canEditMap() || state.tool === "delete") return;
   drawMap();
   const point = eventToWorld(event);
   const preview = { from: state.lineStart, to: point };
@@ -1068,6 +1079,54 @@ function undoLine() {
   state.lineStart = null;
   invalidateFiringData();
   render();
+}
+
+function deleteLineAtEvent(event) {
+  const point = eventToMapPoint(event);
+  const hit = findLineHit(point, 12);
+  if (!hit) {
+    log("No line selected for deletion.", "warn");
+    render();
+    return;
+  }
+
+  if (hit.type === "white") {
+    state.helperLines.splice(hit.index, 1);
+  } else if (hit.type === "yellow") {
+    state.bearingLines.splice(hit.index, 1);
+  } else if (hit.type === "red") {
+    state.distanceLine = null;
+    state.calcBearingInput = "";
+    state.calcDistanceInput = "";
+    invalidateCalculation();
+  }
+
+  state.lineStart = null;
+  invalidateFiringData();
+  log(`${hit.label} line deleted.`, "good");
+  render();
+}
+
+function findLineHit(point, threshold) {
+  const candidates = [];
+  state.helperLines.forEach((line, index) => {
+    candidates.push({ type: "white", label: "White", index, line });
+  });
+  state.bearingLines.forEach((line, index) => {
+    candidates.push({ type: "yellow", label: "Yellow", index, line });
+  });
+  if (state.distanceLine) {
+    candidates.push({ type: "red", label: "Red", index: 0, line: state.distanceLine });
+  }
+
+  let best = null;
+  candidates.forEach((candidate) => {
+    const distance = distanceToScreenLine(point, candidate.line);
+    if (distance <= threshold && (!best || distance < best.distance)) {
+      best = { ...candidate, distance };
+    }
+  });
+  return best;
 }
 
 function clearLines() {
@@ -1712,6 +1771,16 @@ function canFire() {
   return !isLocked() && state.phase === "ReadyToFire" && Object.values(state.checklist).every(Boolean);
 }
 
+function requiredSetupPinsPlaced() {
+  return ["gun", "S1", "S2", "S3"].every((key) => Boolean(state.pins[key]));
+}
+
+function canUseMissionButton() {
+  if (state.phase === "Briefing") return true;
+  if (state.phase === "Setup") return requiredSetupPinsPlaced();
+  return false;
+}
+
 function checklistCount() {
   return Object.values(state.checklist).filter(Boolean).length;
 }
@@ -1735,16 +1804,24 @@ function phaseLabel(phase) {
 
 function missionButtonLabel() {
   if (state.phase === "Briefing") return "Start Mission";
-  if (state.phase === "Setup") return `Setup ${formatTime(state.setupRemaining)}`;
+  if (state.phase === "Setup") {
+    return requiredSetupPinsPlaced()
+      ? `Done Setup ${formatTime(state.setupRemaining)}`
+      : `Setup ${formatTime(state.setupRemaining)}`;
+  }
   return "Mission Running";
 }
 
 function eventToWorld(event) {
+  return mapToWorld(eventToMapPoint(event));
+}
+
+function eventToMapPoint(event) {
   const rect = canvas.getBoundingClientRect();
-  return mapToWorld({
+  return {
     x: ((event.clientX - rect.left) / rect.width) * canvas.width,
     y: ((event.clientY - rect.top) / rect.height) * canvas.height,
-  });
+  };
 }
 
 function handleMapWheel(event) {
@@ -1790,6 +1867,21 @@ function lineBearing(line) {
 
 function lineDistance(line) {
   return distance2D(line.from, line.to);
+}
+
+function distanceToScreenLine(point, line) {
+  const from = worldToMap(line.from);
+  const to = worldToMap(line.to);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return Math.hypot(point.x - from.x, point.y - from.y);
+  const t = clamp(((point.x - from.x) * dx + (point.y - from.y) * dy) / lengthSquared, 0, 1);
+  const closest = {
+    x: from.x + dx * t,
+    y: from.y + dy * t,
+  };
+  return Math.hypot(point.x - closest.x, point.y - closest.y);
 }
 
 function createEmptyPins() {
@@ -1882,7 +1974,10 @@ function startMissionClock() {
     if (!state.missionStarted && state.phase === "Setup") {
       state.setupRemaining = Math.max(0, state.setupRemaining - 1);
       if (state.setupRemaining === 0) {
-        startMission();
+        if (!requiredSetupPinsPlaced()) {
+          log("Setup expired. Required pins missing.", "bad");
+        }
+        startMission(true);
         return;
       }
       updateStatusStrip();
@@ -1921,7 +2016,7 @@ function updateStatusStrip() {
   const startMissionBtn = document.querySelector("#startMissionBtn");
   if (startMissionBtn) {
     startMissionBtn.textContent = missionButtonLabel();
-    startMissionBtn.disabled = state.phase !== "Briefing";
+    startMissionBtn.disabled = !canUseMissionButton();
   }
 }
 
