@@ -11,6 +11,7 @@ vite-server.err.log
 
 # Local snapshots and scratch files
 snapshots/
+issues/
 .chrome*/
 
 # OS/editor noise

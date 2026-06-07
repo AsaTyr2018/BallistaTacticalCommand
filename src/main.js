@@ -1543,26 +1543,31 @@ function drawMap() {
 
 function drawGrid() {
   const { majorWidth, majorHeight, columns, rows } = mapConfig;
+  const bounds = getGridScreenBounds();
   ctx.lineWidth = 1;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(bounds.left, bounds.top, bounds.width, bounds.height);
+  ctx.clip();
 
   ctx.strokeStyle = "rgba(86, 101, 92, 0.16)";
   for (let col = 0; col < columns; col += 1) {
     for (let sub = 1; sub < 10; sub += 1) {
       const x = mapBaseToScreenX(col * majorWidth + (majorWidth / 10) * sub);
-      if (x < -1 || x > canvas.width + 1) continue;
+      if (x < bounds.left - 1 || x > bounds.right + 1) continue;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
+      ctx.moveTo(x, bounds.top);
+      ctx.lineTo(x, bounds.bottom);
       ctx.stroke();
     }
   }
   for (let row = 0; row < rows; row += 1) {
     for (let sub = 1; sub < 10; sub += 1) {
       const y = mapBaseToScreenY(row * majorHeight + (majorHeight / 10) * sub);
-      if (y < -1 || y > canvas.height + 1) continue;
+      if (y < bounds.top - 1 || y > bounds.bottom + 1) continue;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
+      ctx.moveTo(bounds.left, y);
+      ctx.lineTo(bounds.right, y);
       ctx.stroke();
     }
   }
@@ -1571,54 +1576,98 @@ function drawGrid() {
   for (let col = 0; col <= columns; col += 1) {
     const x = mapBaseToScreenX(col * majorWidth);
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
+    ctx.moveTo(x, bounds.top);
+    ctx.lineTo(x, bounds.bottom);
     ctx.stroke();
   }
   for (let row = 0; row <= rows; row += 1) {
     const y = mapBaseToScreenY(row * majorHeight);
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
+    ctx.moveTo(bounds.left, y);
+    ctx.lineTo(bounds.right, y);
     ctx.stroke();
   }
+  ctx.restore();
 
   ctx.fillStyle = "#59665e";
-  ctx.font = "16px sans-serif";
+  ctx.font = "600 15px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   "ABCDEFGHIJKL".split("").forEach((letter, index) => {
-    ctx.fillText(letter, mapBaseToScreenX(18 + index * majorWidth), mapBaseToScreenY(24));
+    const x = mapBaseToScreenX(index * majorWidth + majorWidth / 2);
+    const y = mapBaseToScreenY(18);
+    if (x > -20 && x < canvas.width + 20 && y > -20 && y < canvas.height + 20) {
+      ctx.fillText(letter, x, y);
+    }
   });
   Array.from({ length: rows }, (_, index) => String(index + 1)).forEach((number, index) => {
-    ctx.fillText(number, mapBaseToScreenX(10), mapBaseToScreenY(76 + index * majorHeight));
+    const x = mapBaseToScreenX(12);
+    const y = mapBaseToScreenY(index * majorHeight + majorHeight / 2);
+    if (x > -20 && x < canvas.width + 20 && y > -20 && y < canvas.height + 20) {
+      ctx.fillText(number, x, y);
+    }
   });
+  ctx.textAlign = "start";
+  ctx.textBaseline = "alphabetic";
 
-  if (state.mapZoom >= 1.55) drawSubgridLabels();
+  if (state.mapZoom >= 2.05) drawSubgridLabels(bounds);
 }
 
-function drawSubgridLabels() {
+function getGridScreenBounds() {
   const { majorWidth, majorHeight, columns, rows } = mapConfig;
-  ctx.fillStyle = "rgba(137, 151, 140, 0.58)";
+  const left = mapBaseToScreenX(0);
+  const top = mapBaseToScreenY(0);
+  const right = mapBaseToScreenX(columns * majorWidth);
+  const bottom = mapBaseToScreenY(rows * majorHeight);
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function drawSubgridLabels(bounds) {
+  const { majorWidth, majorHeight, columns, rows } = mapConfig;
+  const gridBounds = bounds ?? getGridScreenBounds();
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(gridBounds.left, gridBounds.top, gridBounds.width, gridBounds.height);
+  ctx.clip();
+  ctx.fillStyle = "rgba(137, 151, 140, 0.44)";
   ctx.font = "9px sans-serif";
+  ctx.textBaseline = "middle";
   for (let col = 0; col < columns; col += 1) {
     for (let row = 0; row < rows; row += 1) {
       const left = col * majorWidth;
       const top = row * majorHeight;
+      const cellLeft = mapBaseToScreenX(left);
+      const cellTop = mapBaseToScreenY(top);
+      const cellRight = mapBaseToScreenX(left + majorWidth);
+      const cellBottom = mapBaseToScreenY(top + majorHeight);
+      if (cellRight < 0 || cellLeft > canvas.width || cellBottom < 0 || cellTop > canvas.height) continue;
+
+      ctx.textAlign = "center";
       for (let subCol = 1; subCol <= 10; subCol += 1) {
-        const x = mapBaseToScreenX(left + (subCol - 0.72) * (majorWidth / 10));
+        const x = mapBaseToScreenX(left + (subCol - 0.5) * (majorWidth / 10));
         const y = mapBaseToScreenY(top + 10);
         if (x > -8 && x < canvas.width + 8 && y > -8 && y < canvas.height + 8) {
           ctx.fillText(String(subCol), x, y);
         }
       }
+      ctx.textAlign = "left";
       for (let subRow = 1; subRow <= 10; subRow += 1) {
-        const x = mapBaseToScreenX(left + 3);
-        const y = mapBaseToScreenY(top + (subRow - 0.32) * (majorHeight / 10));
+        const x = mapBaseToScreenX(left + 4);
+        const y = mapBaseToScreenY(top + (subRow - 0.5) * (majorHeight / 10));
         if (x > -8 && x < canvas.width + 8 && y > -8 && y < canvas.height + 8) {
           ctx.fillText(String(subRow), x, y);
         }
       }
     }
   }
+  ctx.restore();
 }
 
 function drawPins() {
