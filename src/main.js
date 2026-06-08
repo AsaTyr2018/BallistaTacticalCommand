@@ -1453,7 +1453,8 @@ function buildResult(shot, missDistance, success, ammoMatch) {
 
 function findBestChargeAndElevation(bearing, distance, ammoKey) {
   let best = { charge: 3, elevation: 8, miss: Number.POSITIVE_INFINITY };
-  const target = pointFromBearingDistance(gunPosition, bearing, distance);
+  const launchPosition = activeGunPosition();
+  const target = pointFromBearingDistance(launchPosition, bearing, distance);
   for (let charge = 1; charge <= 5; charge += 1) {
     for (let elevation = 1; elevation <= 42; elevation += 0.25) {
       const shot = simulateShot({
@@ -1483,7 +1484,7 @@ function simulateShot({ bearingDeg, elevationDeg, ammoKey, chargeLevel, fuseMode
     y: Math.cos(bearing) * Math.cos(elevation),
     z: Math.sin(elevation),
   };
-  let position = { ...gunPosition };
+  let position = { ...activeGunPosition() };
   let velocity = {
     x: direction.x * muzzleVelocity,
     y: direction.y * muzzleVelocity,
@@ -1859,10 +1860,11 @@ function startBusy(label, duration, onProgress, onComplete) {
 }
 
 function correctionText(impact, missDistance, ammo) {
-  const trueRange = distance2D(gunPosition, mission.targetPosition);
-  const impactRange = distance2D(gunPosition, impact);
+  const launchPosition = activeGunPosition();
+  const trueRange = distance2D(launchPosition, mission.targetPosition);
+  const impactRange = distance2D(launchPosition, impact);
   const rangeError = impactRange - trueRange;
-  const targetBearing = bearingBetween(gunPosition, mission.targetPosition);
+  const targetBearing = bearingBetween(launchPosition, mission.targetPosition);
   const dx = impact.x - mission.targetPosition.x;
   const dy = impact.y - mission.targetPosition.y;
   const lateral = dx * Math.cos(degToRad(targetBearing + 90)) + dy * Math.sin(degToRad(targetBearing + 90));
@@ -2106,6 +2108,10 @@ function mapToWorld(point) {
     y: ((canvas.height - mapConfig.originBottom) * state.mapZoom + state.mapOffset.y - point.y) / scale,
     z: 0,
   };
+}
+
+function activeGunPosition() {
+  return state.pins.gun || gunPosition;
 }
 
 function worldScale(value) {
