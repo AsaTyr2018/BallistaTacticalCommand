@@ -87,9 +87,6 @@ const mapConfig = {
 
 const audioSources = {
   musicManifest: "/music/manifest.json",
-  traversal: "/sound/traversal_loop.wav",
-  load: "/sound/load.wav",
-  fire: "/sound/fire.wav",
 };
 
 const musicVolume = 0.08;
@@ -520,12 +517,9 @@ function render() {
         <textarea id="quickNote" maxlength="240" spellcheck="false" placeholder="scratch bearings, range, charge...">${escapeHtml(state.quickNote)}</textarea>
         <div id="quickNoteResizeHandle" class="quick-note-resize" title="Resize note"></div>
       </aside>
-      <aside class="audio-controls" aria-label="Audio controls">
+      <aside class="audio-controls" aria-label="Music controls">
         <button id="musicToggleBtn" type="button" class="${state.audioPrefs.musicMuted ? "muted" : ""}" title="Toggle background music">
           MUS ${state.audioPrefs.musicMuted ? "OFF" : "ON"}
-        </button>
-        <button id="sfxToggleBtn" type="button" class="${state.audioPrefs.sfxMuted ? "muted" : ""}" title="Toggle game sounds">
-          SFX ${state.audioPrefs.sfxMuted ? "OFF" : "ON"}
         </button>
       </aside>
     </main>
@@ -609,7 +603,6 @@ function bindEvents() {
   document.querySelector("#quickNoteResizeHandle")?.addEventListener("pointerdown", startQuickNoteResize);
   document.querySelector("#quickNoteResetBtn")?.addEventListener("click", resetQuickNoteLayout);
   document.querySelector("#musicToggleBtn")?.addEventListener("click", toggleMusic);
-  document.querySelector("#sfxToggleBtn")?.addEventListener("click", toggleSfx);
   document.querySelector("#undoLineBtn").addEventListener("click", undoLine);
   document.querySelector("#clearLinesBtn").addEventListener("click", clearLines);
   canvas.addEventListener("pointerdown", handleMapPointerDown);
@@ -932,21 +925,19 @@ function resetQuickNoteLayout() {
 function loadAudioPrefs() {
   try {
     const stored = JSON.parse(localStorage.getItem(audioStorageKey));
-    if (!stored) return { musicMuted: true, sfxMuted: false, version: 2 };
+    if (!stored) return { musicMuted: true, version: 2 };
     if (stored.version !== 2) {
       return {
         musicMuted: true,
-        sfxMuted: Boolean(stored?.sfxMuted),
         version: 2,
       };
     }
     return {
       musicMuted: Boolean(stored?.musicMuted),
-      sfxMuted: Boolean(stored?.sfxMuted),
       version: 2,
     };
   } catch {
-    return { musicMuted: true, sfxMuted: false, version: 2 };
+    return { musicMuted: true, version: 2 };
   }
 }
 
@@ -973,21 +964,11 @@ function initAudio() {
     musicCrossfading: false,
     musicFadeTimer: null,
     musicMonitorTimer: null,
-    traversal: new Audio(audioSources.traversal),
-    load: new Audio(audioSources.load),
-    fire: new Audio(audioSources.fire),
   };
   audio.musicPlayers.forEach((player) => {
     player.loop = false;
     player.volume = 0;
     player.preload = "auto";
-  });
-  audio.traversal.loop = true;
-  audio.traversal.volume = 0.34;
-  audio.load.volume = 0.48;
-  audio.fire.volume = 0.62;
-  [audio.traversal, audio.load, audio.fire].forEach((item) => {
-    item.preload = "auto";
   });
 }
 
@@ -1002,14 +983,6 @@ function toggleMusic() {
   state.audioPrefs.musicMuted = !state.audioPrefs.musicMuted;
   saveAudioPrefs();
   syncMusicPlayback();
-  render();
-}
-
-function toggleSfx() {
-  unlockAudio();
-  state.audioPrefs.sfxMuted = !state.audioPrefs.sfxMuted;
-  saveAudioPrefs();
-  if (state.audioPrefs.sfxMuted) stopTraversalSound();
   render();
 }
 
@@ -1100,29 +1073,6 @@ function startMusicMonitor() {
     const remaining = current.duration - current.currentTime;
     if (remaining <= musicCrossfadeSeconds + 0.3) playNextMusicTrack(true);
   }, 1000);
-}
-
-function playSfx(name) {
-  if (state.audioPrefs.sfxMuted) return;
-  unlockAudio();
-  const sound = audio?.[name];
-  if (!sound) return;
-  sound.currentTime = 0;
-  sound.play().catch(() => {});
-}
-
-function startTraversalSound() {
-  if (state.audioPrefs.sfxMuted) return;
-  unlockAudio();
-  if (!audio?.traversal) return;
-  audio.traversal.currentTime = 0;
-  audio.traversal.play().catch(() => {});
-}
-
-function stopTraversalSound() {
-  if (!audio?.traversal) return;
-  audio.traversal.pause();
-  audio.traversal.currentTime = 0;
 }
 
 function checkRow(key, label) {
@@ -1377,7 +1327,6 @@ function createTargetOrder(target, reason) {
 function startNextMission() {
   clearInterval(busyTimer);
   clearInterval(projectileTimer);
-  stopTraversalSound();
   mission = createMission();
   gunPosition = mission.gunPosition;
   spotters = mission.spotters;
@@ -1688,12 +1637,10 @@ function startAlignment() {
     0.35,
   ) + settleSeconds;
   state.phase = "TraverseGun";
-  startTraversalSound();
   startBusy("Traversing", duration, (progress) => {
     state.currentBearing = normalizeDeg(startBearing + bearingDelta * progress);
     state.currentElevation = startElevation + elevationDelta * progress;
   }, () => {
-    stopTraversalSound();
     state.currentBearing = bearing;
     state.currentElevation = elevation;
     state.phase = "LoadGun";
@@ -1704,7 +1651,6 @@ function startAlignment() {
 function startLoading() {
   const ammo = ammoTypes[state.selectedAmmo];
   const duration = 6 + ammo.massKg / 28 + state.selectedCharge * 0.8;
-  playSfx("load");
   startBusy(`Loading ${ammo.label}`, duration, null, () => {
     state.phase = "ReadyToFire";
     resetChecklist();
@@ -1720,7 +1666,6 @@ function fire() {
   }
   state.ammoCounts[state.selectedAmmo] -= 1;
   state.phase = "ProjectileFlight";
-  playSfx("fire");
   const shot = simulateShot({
     bearingDeg: state.currentBearing,
     elevationDeg: state.currentElevation,
