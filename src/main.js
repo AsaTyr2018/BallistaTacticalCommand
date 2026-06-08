@@ -1044,7 +1044,7 @@ function mapHint() {
   if (state.tool === "pan") return "Pan: drag map. Wheel zooms.";
   if (state.tool === "delete") return "Delete: click a line to remove it.";
   if (state.tool === "yellow") return "Yellow: two-click bearing line.";
-  if (state.tool === "red") return "Red: two-click range line.";
+  if (state.tool === "red") return "Red: click target marker. Range is measured from Gun.";
   return "White: two-click guide line.";
 }
 
@@ -1384,6 +1384,20 @@ function handleMapClick(event) {
     return;
   }
   const point = eventToWorld(event);
+  if (state.tool === "red") {
+    const line = { from: activeGunPosition(), to: point };
+    state.distanceLine = line;
+    const bearing = lineBearing(line).toFixed(1);
+    const distance = formatDistance(lineDistance(line));
+    state.calcBearingInput = bearing;
+    state.calcDistanceInput = kmValue(lineDistance(line));
+    state.lineStart = null;
+    invalidateCalculation();
+    invalidateFiringData();
+    log(`Red target marker: ${bearing} deg, ${distance}. Values copied.`, "good");
+    render();
+    return;
+  }
   if (!state.lineStart) {
     state.lineStart = point;
     drawMap();
@@ -1399,14 +1413,6 @@ function handleMapClick(event) {
       drawnBearing: lineBearing(line),
     });
     log(`Yellow line: ${lineBearing(line).toFixed(1)} deg, ${formatDistance(lineDistance(line))}.`, "warn");
-  } else if (state.tool === "red") {
-    state.distanceLine = line;
-    const bearing = lineBearing(line).toFixed(1);
-    const distance = formatDistance(lineDistance(line));
-    state.calcBearingInput = bearing;
-    state.calcDistanceInput = kmValue(lineDistance(line));
-    invalidateCalculation();
-    log(`Red line: ${bearing} deg, ${distance}. Values copied.`, "good");
   }
   state.lineStart = null;
   invalidateFiringData();
@@ -1427,9 +1433,16 @@ function handleMapMove(event) {
     drawMap();
     return;
   }
-  if (!state.lineStart || !canEditMap() || state.tool === "delete") return;
+  if (!canEditMap() || state.tool === "delete") return;
   drawMap();
   const point = eventToWorld(event);
+  if (state.tool === "red") {
+    const preview = { from: activeGunPosition(), to: point };
+    drawWorldLine(preview, toolColor(state.tool), true, 2);
+    drawCursorReadout(point, preview);
+    return;
+  }
+  if (!state.lineStart) return;
   const preview = { from: state.lineStart, to: point };
   drawWorldLine(preview, toolColor(state.tool), true, 2);
   drawCursorReadout(point, preview);
