@@ -86,11 +86,14 @@ const mapConfig = {
 };
 
 const audioSources = {
-  music: "/sound/Gear-Heart%20Metronome.mp3",
+  musicManifest: "/music/manifest.json",
   traversal: "/sound/traversal_loop.wav",
   load: "/sound/load.wav",
   fire: "/sound/fire.wav",
 };
+
+const musicVolume = 0.08;
+const musicCrossfadeSeconds = 4;
 
 const targetProfiles = [
   {
@@ -958,18 +961,28 @@ function bindAudioUnlock() {
 function initAudio() {
   if (audio) return;
   audio = {
-    music: new Audio(audioSources.music),
+    musicPlayers: [new Audio(), new Audio()],
+    activeMusicPlayer: 0,
+    musicTracks: [],
+    musicTrackIndex: -1,
+    musicManifestLoaded: false,
+    musicCrossfading: false,
+    musicFadeTimer: null,
+    musicMonitorTimer: null,
     traversal: new Audio(audioSources.traversal),
     load: new Audio(audioSources.load),
     fire: new Audio(audioSources.fire),
   };
-  audio.music.loop = true;
-  audio.music.volume = 0.08;
+  audio.musicPlayers.forEach((player) => {
+    player.loop = false;
+    player.volume = 0;
+    player.preload = "auto";
+  });
   audio.traversal.loop = true;
   audio.traversal.volume = 0.34;
   audio.load.volume = 0.48;
   audio.fire.volume = 0.62;
-  Object.values(audio).forEach((item) => {
+  [audio.traversal, audio.load, audio.fire].forEach((item) => {
     item.preload = "auto";
   });
 }
@@ -999,10 +1012,90 @@ function toggleSfx() {
 function syncMusicPlayback() {
   if (!audio || !audioUnlocked) return;
   if (state.audioPrefs.musicMuted) {
-    audio.music.pause();
+    stopMusic();
     return;
   }
-  audio.music.play().catch(() => {});
+  startMusicPlaylist();
+}
+
+async function loadMusicManifest() {
+  if (!audio || audio.musicManifestLoaded) return audio.musicTracks;
+  audio.musicManifestLoaded = true;
+  try {
+    const response = await fetch(audioSources.musicManifest, { cache: "no-store" });
+    const manifest = await response.json();
+    audio.musicTracks = Array.isArray(manifest.tracks) ? manifest.tracks.filter((track) => track.src) : [];
+  } catch {
+    audio.musicTracks = [];
+  }
+  return audio.musicTracks;
+}
+
+async function startMusicPlaylist() {
+  const tracks = await loadMusicManifest();
+  if (!audio || state.audioPrefs.musicMuted || !tracks.length) return;
+  const current = audio.musicPlayers[audio.activeMusicPlayer];
+  if (!current.src || current.paused) playNextMusicTrack(false);
+  startMusicMonitor();
+}
+
+function stopMusic() {
+  if (!audio) return;
+  clearInterval(audio.musicFadeTimer);
+  clearInterval(audio.musicMonitorTimer);
+  audio.musicCrossfading = false;
+  audio.musicPlayers.forEach((player) => {
+    player.pause();
+    player.volume = 0;
+  });
+}
+
+function playNextMusicTrack(crossfade = true) {
+  if (!audio?.musicTracks.length || state.audioPrefs.musicMuted) return;
+  if (crossfade && audio.musicCrossfading) return;
+  const nextIndex = (audio.musicTrackIndex + 1) % audio.musicTracks.length;
+  const nextPlayerIndex = crossfade ? 1 - audio.activeMusicPlayer : audio.activeMusicPlayer;
+  const nextPlayer = audio.musicPlayers[nextPlayerIndex];
+  const previousPlayer = audio.musicPlayers[audio.activeMusicPlayer];
+  audio.musicTrackIndex = nextIndex;
+  nextPlayer.src = audio.musicTracks[nextIndex].src;
+  nextPlayer.currentTime = 0;
+  nextPlayer.volume = crossfade ? 0 : musicVolume;
+  nextPlayer.play().catch(() => {});
+  if (crossfade && previousPlayer !== nextPlayer && !previousPlayer.paused) {
+    crossfadeMusic(previousPlayer, nextPlayer);
+  } else {
+    audio.activeMusicPlayer = nextPlayerIndex;
+  }
+}
+
+function crossfadeMusic(fromPlayer, toPlayer) {
+  clearInterval(audio.musicFadeTimer);
+  audio.musicCrossfading = true;
+  const startedAt = performance.now();
+  audio.musicFadeTimer = setInterval(() => {
+    const progress = Math.min(1, (performance.now() - startedAt) / (musicCrossfadeSeconds * 1000));
+    fromPlayer.volume = musicVolume * (1 - progress);
+    toPlayer.volume = musicVolume * progress;
+    if (progress >= 1) {
+      clearInterval(audio.musicFadeTimer);
+      fromPlayer.pause();
+      fromPlayer.volume = 0;
+      audio.activeMusicPlayer = audio.musicPlayers.indexOf(toPlayer);
+      audio.musicCrossfading = false;
+    }
+  }, 120);
+}
+
+function startMusicMonitor() {
+  clearInterval(audio.musicMonitorTimer);
+  audio.musicMonitorTimer = setInterval(() => {
+    if (state.audioPrefs.musicMuted || !audio.musicTracks.length) return;
+    const current = audio.musicPlayers[audio.activeMusicPlayer];
+    if (!Number.isFinite(current.duration) || current.duration <= 0) return;
+    const remaining = current.duration - current.currentTime;
+    if (remaining <= musicCrossfadeSeconds + 0.3) playNextMusicTrack(true);
+  }, 1000);
 }
 
 function playSfx(name) {
