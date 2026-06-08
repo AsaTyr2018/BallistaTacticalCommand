@@ -1446,12 +1446,18 @@ function startAlignment() {
   const elevationDelta = elevation - startElevation;
   const deltaBearing = Math.abs(shortestAngle(state.currentBearing, bearing));
   const deltaElevation = Math.abs(state.currentElevation - elevation);
-  const ammo = ammoTypes[state.selectedAmmo];
-  const duration = Math.max(deltaBearing / 1.8, deltaElevation / 0.55) + 4 + (ammo.massKg > 100 ? 3 : 1.5);
+  const traverseRateDegPerSecond = 3.2;
+  const elevationRateDegPerSecond = 0.85;
+  const settleSeconds = 0.7;
+  const duration = Math.max(
+    deltaBearing / traverseRateDegPerSecond,
+    deltaElevation / elevationRateDegPerSecond,
+    0.35,
+  ) + settleSeconds;
+  state.phase = "TraverseGun";
   startBusy("Traversing", duration, (progress) => {
-    const eased = easeInOut(progress);
-    state.currentBearing = normalizeDeg(startBearing + bearingDelta * eased);
-    state.currentElevation = startElevation + elevationDelta * eased;
+    state.currentBearing = normalizeDeg(startBearing + bearingDelta * progress);
+    state.currentElevation = startElevation + elevationDelta * progress;
   }, () => {
     state.currentBearing = bearing;
     state.currentElevation = elevation;
