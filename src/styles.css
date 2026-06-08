@@ -137,6 +137,7 @@ label {
 }
 
 .phase-lights {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(6, auto);
   gap: 5px;
@@ -218,10 +219,18 @@ label {
 }
 
 .status-strip {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 52px 66px 68px 108px 94px 92px 134px;
+  align-items: center;
+  justify-content: end;
   gap: 6px;
+}
+
+.status-strip button,
+.status-strip .pill {
+  width: 100%;
+  justify-content: center;
 }
 
 .setup-button {
@@ -233,6 +242,7 @@ label {
     #26352e;
   color: #f3efd2;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .setup-button:not(:disabled) {
@@ -306,7 +316,13 @@ label {
     #1d2421;
   color: #d9decf;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+#timePill,
+#heatPill {
+  font-family: "Consolas", "SFMono-Regular", monospace;
 }
 
 .grid {
