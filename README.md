@@ -56,7 +56,9 @@ npm run build
 
 ## Credits and Disclaimer
 
-Ballista - Tactical Command is an independent prototype inspired in part by the atmosphere and artillery-command fantasy of Iron Nest. It is not affiliated with, endorsed by, or connected to Iron Nest or its creators.
+Ballista - Tactical Command is an independent prototype inspired in part by the atmosphere and artillery-command fantasy of [Iron Nest](https://store.steampowered.com/app/2950790/IRON_NEST_Heavy_Turret_Simulator/). It is not affiliated with, endorsed by, or connected to Iron Nest or its creators.
+
+This prototype exists because waiting for release is hard, and sometimes a fire-control crew just wants to do target practice.
 
 Background music is created by AIMusics aka AsaTyr and is included for use within this project.
 
