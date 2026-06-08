@@ -239,27 +239,31 @@ function render() {
           <h1>Ballista - Tactical Command</h1>
           <p>Prototype 0.4 - Fire control map</p>
         </div>
-        <div class="radio-ticker" aria-label="Latest radio message">
-          <span>RX</span>
-          <div><strong>${escapeHtml(latestRadioText())}</strong></div>
-        </div>
-        <div class="phase-lights" aria-label="Mission phases">
-          ${phaseLight("Briefing", "BRF")}
-          ${phaseLight("Setup", "SET")}
-          ${phaseLight("Plotting", "PLT")}
-          ${phaseLight("FireDataSet", "DAT")}
-          ${phaseLight("ReadyToFire", "RDY")}
-          ${phaseLight("MissionComplete", "CMP")}
-        </div>
-        <div class="status-strip">
-          <button id="helpBtn" type="button">Help</button>
-          <button id="orderBtn" type="button">Orders</button>
-          <button id="logBtn" type="button">Radio</button>
-          <span id="phasePill" class="pill">Phase: ${phaseLabel(state.phase)}</span>
-          <button id="startMissionBtn" class="setup-button" type="button" ${canUseMissionButton() ? "" : "disabled"}>${missionButtonLabel()}</button>
-          <span id="timePill" class="pill">Time: ${state.missionStarted ? formatTime(state.timeRemaining) : "standby"}</span>
-          <span id="heatPill" class="pill">Heat: ${Math.round(state.barrelHeat * 100)}%</span>
-          <span class="pill">Wind: ${environment.wind.x.toFixed(1)} / ${environment.wind.y.toFixed(1)} m/s</span>
+        <div class="command-deck">
+          <div class="command-signal">
+            <div class="radio-ticker" aria-label="Latest radio message">
+              <span>RX</span>
+              <div><strong>${escapeHtml(latestRadioText())}</strong></div>
+            </div>
+            <div class="phase-lights" aria-label="Mission phases">
+              ${phaseLight("Briefing", "BRF")}
+              ${phaseLight("Setup", "SET")}
+              ${phaseLight("Plotting", "PLT")}
+              ${phaseLight("FireDataSet", "DAT")}
+              ${phaseLight("ReadyToFire", "RDY")}
+              ${phaseLight("MissionComplete", "CMP")}
+            </div>
+          </div>
+          <div class="status-strip">
+            <button id="helpBtn" type="button">Help</button>
+            <button id="orderBtn" type="button">Orders</button>
+            <button id="logBtn" type="button">Radio</button>
+            <span id="phasePill" class="pill">Phase: ${phaseLabel(state.phase)}</span>
+            <button id="startMissionBtn" class="setup-button" type="button" ${canUseMissionButton() ? "" : "disabled"}>${missionButtonLabel()}</button>
+            <span id="timePill" class="pill">Time: ${state.missionStarted ? formatTime(state.timeRemaining) : "standby"}</span>
+            <span id="heatPill" class="pill">Heat: ${Math.round(state.barrelHeat * 100)}%</span>
+            <span class="pill">Wind: ${environment.wind.x.toFixed(1)} / ${environment.wind.y.toFixed(1)} m/s</span>
+          </div>
         </div>
       </header>
 
