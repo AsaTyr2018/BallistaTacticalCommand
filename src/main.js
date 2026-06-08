@@ -1706,9 +1706,11 @@ function resolveImpact(shot) {
     resolveIllumination(shot, missDistance);
     return;
   }
-  const effectiveRadius = (ammo.blastRadius || ammo.smokeRadius || ammo.lightRadius || 0) + target.profile.targetRadius;
-  const armorModifier = ammo.penetration >= target.profile.armor ? 1 : 0.45;
   const ammoMatch = shot.ammoKey === target.profile.requiredAmmo;
+  const effectRadius = ammo.blastRadius || ammo.smokeRadius || ammo.lightRadius || 0;
+  const effectiveRadius = effectRadius + target.profile.targetRadius;
+  const withinEffectRadius = missDistance <= effectiveRadius;
+  const armorModifier = ammoMatch || ammo.penetration >= target.profile.armor ? 1 : 0.45;
   const ammoModifier = ammoMatch ? 1.25 : 0.55;
   const baseEffect = Math.max(0, 1 - missDistance / Math.max(effectiveRadius, 1));
   const effect = baseEffect * armorModifier * ammoModifier;
@@ -1725,7 +1727,7 @@ function resolveImpact(shot) {
   if (shot.ammoKey === "SMOKE" && target.profile.requiredAmmo !== "SMOKE") {
     state.phase = "Correction";
     log(`Smoke deployed. Offset ${formatDistance(missDistance)}.`, missDistance < 130 ? "good" : "warn");
-  } else if (effect > 0.25) {
+  } else if ((ammoMatch && withinEffectRadius) || effect > 0.45) {
     completeActiveTarget(shot, missDistance, ammoMatch);
   } else {
     state.phase = "Correction";
