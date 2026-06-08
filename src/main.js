@@ -932,12 +932,13 @@ function resetQuickNoteLayout() {
 function loadAudioPrefs() {
   try {
     const stored = JSON.parse(localStorage.getItem(audioStorageKey));
+    if (!stored) return { musicMuted: true, sfxMuted: false };
     return {
       musicMuted: Boolean(stored?.musicMuted),
       sfxMuted: Boolean(stored?.sfxMuted),
     };
   } catch {
-    return { musicMuted: false, sfxMuted: false };
+    return { musicMuted: true, sfxMuted: false };
   }
 }
 
@@ -962,7 +963,7 @@ function initAudio() {
     fire: new Audio(audioSources.fire),
   };
   audio.music.loop = true;
-  audio.music.volume = 0.16;
+  audio.music.volume = 0.08;
   audio.traversal.loop = true;
   audio.traversal.volume = 0.34;
   audio.load.volume = 0.48;
