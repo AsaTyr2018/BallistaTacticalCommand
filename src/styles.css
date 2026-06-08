@@ -16,8 +16,8 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
-  padding-bottom: 76px;
+  height: 100vh;
+  overflow: hidden;
   background:
     radial-gradient(ellipse at 48% -8%, rgba(178, 164, 113, 0.08), transparent 42%),
     linear-gradient(115deg, rgba(255, 255, 255, 0.018), transparent 28%, rgba(0, 0, 0, 0.16) 100%),
@@ -78,7 +78,8 @@ label {
 .shell {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .topbar {
@@ -243,7 +244,7 @@ label {
   left: 50%;
   bottom: 12px;
   transform: translateX(-50%);
-  z-index: 5;
+  z-index: 45;
   display: grid;
   grid-template-columns: repeat(4, minmax(76px, auto));
   gap: 6px;
@@ -950,17 +951,6 @@ body:has([data-pin].active-pin) #map {
 
 .log-entry.bad {
   border-left-color: #c86f5f;
-}
-
-.footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  border-top: 1px solid #2f3935;
-  padding: 10px 14px;
-  background: #151a18;
-  color: #98a39b;
-  font-size: 12px;
 }
 
 .modal-backdrop {

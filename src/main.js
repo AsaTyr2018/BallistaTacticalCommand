@@ -498,19 +498,12 @@ function render() {
           </article>
         </div>
       ` : ""}
-
-      <footer class="footer">
-        <span>White guide lines. Yellow bearings. Red range.</span>
-        <span></span>
-      </footer>
-
       <div class="gauge-dock">
         <div class="mini-gauge drum-gauge"><span>Bearing</span><strong>${state.currentBearing.toFixed(1)} deg</strong></div>
         <div class="mini-gauge drum-gauge"><span>Elevation</span><strong>${state.currentElevation.toFixed(1)} deg</strong></div>
         <div class="mini-gauge"><span>Range</span><strong>${state.distanceLine ? formatDistance(lineDistance(state.distanceLine)) : "--"}</strong></div>
         <div class="mini-gauge"><span>Fire Data</span><strong>${state.firingElevation ? `${state.firingElevation} deg` : "--"}</strong></div>
       </div>
-
       <aside class="quick-note" style="${quickNoteStyle()}">
         <div class="quick-note-head" id="quickNoteDragHandle" title="Drag note">
           <strong>Quick Note</strong>
@@ -932,13 +925,21 @@ function resetQuickNoteLayout() {
 function loadAudioPrefs() {
   try {
     const stored = JSON.parse(localStorage.getItem(audioStorageKey));
-    if (!stored) return { musicMuted: true, sfxMuted: false };
+    if (!stored) return { musicMuted: true, sfxMuted: false, version: 2 };
+    if (stored.version !== 2) {
+      return {
+        musicMuted: true,
+        sfxMuted: Boolean(stored?.sfxMuted),
+        version: 2,
+      };
+    }
     return {
       musicMuted: Boolean(stored?.musicMuted),
       sfxMuted: Boolean(stored?.sfxMuted),
+      version: 2,
     };
   } catch {
-    return { musicMuted: true, sfxMuted: false };
+    return { musicMuted: true, sfxMuted: false, version: 2 };
   }
 }
 
