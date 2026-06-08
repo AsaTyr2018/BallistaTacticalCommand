@@ -234,7 +234,7 @@ function render() {
       <header class="topbar">
         <div class="brand">
           <h1>Ballista - Tactical Command</h1>
-          <p>Prototype 0.4 - Fire control map</p>
+          <p>Version 0.8 - Fire control map</p>
         </div>
         <div class="command-deck">
           <div class="command-signal">
