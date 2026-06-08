@@ -137,6 +137,13 @@ const targetProfiles = [
   },
 ];
 
+const missionTemplates = [
+  { key: "strike", label: "Strike", weight: 42, targetCount: [1, 1], profiles: ["infantry", "armored", "bunker", "observation"], emergencyChance: 0.18, timePerTarget: [230, 320] },
+  { key: "sweep", label: "Sweep", weight: 24, targetCount: [2, 3], profiles: ["infantry", "infantry", "armored", "observation"], emergencyChance: 0.12, timePerTarget: [190, 260] },
+  { key: "breach", label: "Breach", weight: 18, targetCount: [2, 2], profiles: ["bunker", "infantry", "armored"], emergencyChance: 0.2, timePerTarget: [230, 310] },
+  { key: "counterBattery", label: "Counter-battery", weight: 16, targetCount: [1, 2], profiles: ["infantry", "observation", "armored"], emergencyProfile: "battery", emergencyChance: 0.8, emergencyTimer: [100, 150], timePerTarget: [210, 280] },
+];
+
 let missionNumber = 0;
 let mission = createMission();
 let gunPosition = mission.gunPosition;
@@ -940,13 +947,16 @@ function machineStatusLabel() {
 
 function createMission() {
   missionNumber += 1;
-  const profile = pick(targetProfiles);
-  const targetPosition = {
-    x: randomBetween(2800, 6500),
-    y: randomBetween(700, 3600),
-    z: 42,
-  };
-  targetPosition.z = groundHeight(targetPosition.x, targetPosition.y);
+  const template = weightedPick(missionTemplates);
+  const plannedCount = Math.round(randomBetween(template.targetCount[0], template.targetCount[1]));
+  const targets = Array.from({ length: plannedCount }, (_, index) => createMissionTarget(template, index, false));
+  const emergencyTarget = Math.random() < template.emergencyChance
+    ? createMissionTarget(template, targets.length, true)
+    : null;
+  if (emergencyTarget) targets.push(emergencyTarget);
+  const activeTarget = targets[0];
+  const profile = activeTarget.profile;
+  const targetPosition = activeTarget.position;
   const generatedGun = {
     x: randomBetween(-100, 900),
     y: randomBetween(-350, 450),
@@ -956,21 +966,23 @@ function createMission() {
   const generatedSpotters = createSpotters(targetPosition);
   const id = `M-${String(missionNumber).padStart(3, "0")}`;
   const sector = sectorFromWorld(targetPosition);
-  const timeLimitSeconds = Math.round(randomBetween(210, 330));
+  const activeTargetCount = targets.filter((target) => !target.emergency).length;
+  const timeLimitSeconds = Math.round(randomBetween(template.timePerTarget[0], template.timePerTarget[1]) * activeTargetCount);
   const callsign = pick(["OP Adler", "OP Kiefer", "OP Nord", "OP Falke", "OP Stein"]);
-  const orderText = [
-    `${timeStamp()} / ${callsign}`,
-    profile.radio,
-    `Sector ${sector}.`,
-    "Target not visible.",
-    `Priority: ${profile.priority}.`,
-    `Effect: ${profile.effect}.`,
-    `Window: ${timeLimitSeconds} seconds.`,
-  ].join("\n");
+  const orderText = buildOrderText({
+    id,
+    callsign,
+    profile,
+    sector,
+    timeLimitSeconds,
+    template,
+    activeTarget,
+    targets,
+  });
 
   return {
     id,
-    title: profile.label,
+    title: `${template.label}: ${profile.label}`,
     callsign,
     priority: profile.priority,
     targetHint: `${profile.radio} ${sector}`,
@@ -984,7 +996,50 @@ function createMission() {
     orderText,
     gunPosition: generatedGun,
     spotters: generatedSpotters,
+    template,
+    targets,
+    activeTargetIndex: 0,
+    completedTargets: 0,
+    emergencyTriggered: false,
   };
+}
+
+function createMissionTarget(template, index, emergency) {
+  const key = emergency && template.emergencyProfile ? template.emergencyProfile : pick(template.profiles);
+  const profile = targetProfiles.find((item) => item.key === key) || pick(targetProfiles);
+  const position = {
+    x: randomBetween(2800, 6500),
+    y: randomBetween(700, 3600),
+    z: 42,
+  };
+  position.z = groundHeight(position.x, position.y);
+  return {
+    id: `T${index + 1}`,
+    profile,
+    position,
+    sector: sectorFromWorld(position),
+    emergency,
+    active: index === 0,
+    neutralized: false,
+  };
+}
+
+function buildOrderText({ callsign, profile, sector, timeLimitSeconds, template, activeTarget, targets }) {
+  const planned = targets.filter((target) => !target.emergency);
+  const lines = [
+    `${timeStamp()} / ${callsign}`,
+    `${template.label.toUpperCase()} fire mission.`,
+    profile.radio,
+    `Sector ${sector}.`,
+    "Target not visible.",
+    `Objective ${activeTarget.id} of ${planned.length}.`,
+    `Priority: ${profile.priority}.`,
+    `Effect: ${profile.effect}.`,
+    `Window: ${timeLimitSeconds} seconds.`,
+  ];
+  if (planned.length > 1) lines.push("Further target data follows after confirmed effect.");
+  if (targets.some((target) => target.emergency)) lines.push("Command net reports possible priority retask.");
+  return lines.join("\n");
 }
 
 function createSpotters(targetPosition) {
@@ -1007,6 +1062,97 @@ function createSpotters(targetPosition) {
       bearing: bearingBetween(position, targetPosition),
     };
   });
+}
+
+function activeTarget() {
+  return mission.targets?.[mission.activeTargetIndex] || {
+    id: "T1",
+    profile: mission.profile,
+    position: mission.targetPosition,
+    sector: sectorFromWorld(mission.targetPosition),
+    emergency: false,
+    active: true,
+    neutralized: false,
+  };
+}
+
+function syncMissionToActiveTarget() {
+  const target = activeTarget();
+  mission.profile = target.profile;
+  mission.targetPosition = target.position;
+  mission.targetRadius = target.profile.targetRadius;
+  mission.armor = target.profile.armor;
+  mission.requiredAmmo = target.profile.requiredAmmo;
+  mission.effect = target.profile.effect;
+  mission.priority = target.profile.priority;
+  mission.targetHint = `${target.profile.radio} ${target.sector}`;
+  spotters = updateSpotterBearings(spotters, target.position);
+  mission.spotters = spotters;
+}
+
+function updateSpotterBearings(items, targetPosition) {
+  return items.map((spotter) => ({
+    ...spotter,
+    bearing: bearingBetween(spotter.position, targetPosition),
+  }));
+}
+
+function activateTarget(index, reason = "next") {
+  mission.targets.forEach((target, targetIndex) => {
+    target.active = targetIndex === index;
+  });
+  mission.activeTargetIndex = index;
+  syncMissionToActiveTarget();
+  state.revealedTarget = false;
+  state.lineStart = null;
+  state.distanceLine = null;
+  state.calcBearingInput = "";
+  state.calcDistanceInput = "";
+  state.calcElevation = "";
+  state.firingBearing = "";
+  state.firingElevation = "";
+  state.trajectory = [];
+  state.projectileIndex = -1;
+  state.lastImpact = null;
+  state.phase = "Plotting";
+  const target = activeTarget();
+  const message = reason === "emergency"
+    ? `${mission.id}: priority retask. ${target.profile.radio} Sector ${target.sector}.`
+    : `${mission.id}: next objective. ${target.profile.radio} Sector ${target.sector}.`;
+  log(message, reason === "emergency" ? "bad" : "warn");
+  state.orderLog.unshift(createTargetOrder(target, reason));
+}
+
+function createTargetOrder(target, reason) {
+  const suffix = reason === "emergency" ? "PRIORITY" : target.id;
+  const timeWindow = reason === "emergency" && mission.template?.emergencyTimer
+    ? Math.round(randomBetween(mission.template.emergencyTimer[0], mission.template.emergencyTimer[1]))
+    : state.timeRemaining;
+  if (reason === "emergency") state.timeRemaining = Math.min(state.timeRemaining, timeWindow);
+  return {
+    ...mission,
+    id: `${mission.id}-${suffix}`,
+    title: target.profile.label,
+    profile: target.profile,
+    targetPosition: target.position,
+    targetRadius: target.profile.targetRadius,
+    armor: target.profile.armor,
+    requiredAmmo: target.profile.requiredAmmo,
+    effect: target.profile.effect,
+    priority: target.profile.priority,
+    orderText: [
+      `${timeStamp()} / ${mission.callsign}`,
+      reason === "emergency" ? "PRIORITY BREAK. Counter-battery threat aligning." : "ADJUST FIRE MISSION. New objective follows.",
+      target.profile.radio,
+      `Sector ${target.sector}.`,
+      "Target not visible.",
+      `Priority: ${target.profile.priority}.`,
+      `Effect: ${target.profile.effect}.`,
+      reason === "emergency" ? `Emergency window: ${timeWindow} seconds.` : `Remaining window: ${formatTime(state.timeRemaining)}.`,
+    ].join("\n"),
+    spotters: mission.spotters,
+    result: null,
+  };
 }
 
 function startNextMission() {
@@ -1366,14 +1512,15 @@ function animateProjectile(shot) {
 
 function resolveImpact(shot) {
   const ammo = ammoTypes[shot.ammoKey];
-  const missDistance = distance2D(shot.impact, mission.targetPosition);
+  const target = activeTarget();
+  const missDistance = distance2D(shot.impact, target.position);
   if (shot.ammoKey === "ILLUMINATION") {
     resolveIllumination(shot, missDistance);
     return;
   }
-  const effectiveRadius = (ammo.blastRadius || ammo.smokeRadius || ammo.lightRadius || 0) + mission.targetRadius;
-  const armorModifier = ammo.penetration >= mission.armor ? 1 : 0.45;
-  const ammoMatch = shot.ammoKey === mission.requiredAmmo;
+  const effectiveRadius = (ammo.blastRadius || ammo.smokeRadius || ammo.lightRadius || 0) + target.profile.targetRadius;
+  const armorModifier = ammo.penetration >= target.profile.armor ? 1 : 0.45;
+  const ammoMatch = shot.ammoKey === target.profile.requiredAmmo;
   const ammoModifier = ammoMatch ? 1.25 : 0.55;
   const baseEffect = Math.max(0, 1 - missDistance / Math.max(effectiveRadius, 1));
   const effect = baseEffect * armorModifier * ammoModifier;
@@ -1387,15 +1534,11 @@ function resolveImpact(shot) {
   });
   state.barrelHeat = Math.min(1, state.barrelHeat + chargeLevels[state.selectedCharge].stress);
 
-  if (shot.ammoKey === "SMOKE" && mission.requiredAmmo !== "SMOKE") {
+  if (shot.ammoKey === "SMOKE" && target.profile.requiredAmmo !== "SMOKE") {
     state.phase = "Correction";
     log(`Smoke deployed. Offset ${formatDistance(missDistance)}.`, missDistance < 130 ? "good" : "warn");
   } else if (effect > 0.25) {
-    state.phase = "MissionComplete";
-    state.result = buildResult(shot, missDistance, true, ammoMatch);
-    mission.result = state.result;
-    state.resultOpen = true;
-    log(`Effect confirmed. Impact offset ${formatDistance(missDistance)}.`, "good");
+    completeActiveTarget(shot, missDistance, ammoMatch);
   } else {
     state.phase = "Correction";
     log(correctionText(shot.impact, missDistance, ammo), "bad");
@@ -1405,6 +1548,7 @@ function resolveImpact(shot) {
 
 function resolveIllumination(shot, missDistance) {
   const ammo = ammoTypes[shot.ammoKey];
+  const target = activeTarget();
   state.lastImpact = shot.impact;
   state.effects.push({
     type: shot.ammoKey,
@@ -1415,16 +1559,47 @@ function resolveIllumination(shot, missDistance) {
   });
   state.barrelHeat = Math.min(1, state.barrelHeat + chargeLevels[state.selectedCharge].stress);
 
-  const revealRadius = ammo.lightRadius + mission.targetRadius;
+  const revealRadius = ammo.lightRadius + target.profile.targetRadius;
   if (missDistance <= revealRadius) {
     state.revealedTarget = true;
     state.phase = "Correction";
-    log(`Star effective. ${mission.profile.label} revealed. Offset ${formatDistance(missDistance)}.`, "good");
+    log(`Star effective. ${target.profile.label} revealed. Offset ${formatDistance(missDistance)}.`, "good");
   } else {
     state.phase = "Correction";
     log(`Star offset ${formatDistance(missDistance)}. No reveal.`, "warn");
   }
   render();
+}
+
+function completeActiveTarget(shot, missDistance, ammoMatch) {
+  const target = activeTarget();
+  target.neutralized = true;
+  target.active = false;
+  mission.completedTargets = (mission.targets || []).filter((item) => item.neutralized).length;
+  log(`${target.id} effect confirmed. Impact offset ${formatDistance(missDistance)}.`, "good");
+  const nextIndex = nextMissionTargetIndex();
+  if (nextIndex !== -1) {
+    activateTarget(nextIndex, mission.targets[nextIndex].emergency ? "emergency" : "next");
+    render();
+    return;
+  }
+  state.phase = "MissionComplete";
+  state.result = buildResult(shot, missDistance, true, ammoMatch);
+  mission.result = state.result;
+  state.resultOpen = true;
+  render();
+}
+
+function nextMissionTargetIndex() {
+  const targets = mission.targets || [];
+  const plannedIndex = targets.findIndex((target) => !target.emergency && !target.neutralized);
+  if (plannedIndex !== -1) return plannedIndex;
+  const emergencyIndex = targets.findIndex((target) => target.emergency && !target.neutralized);
+  if (emergencyIndex !== -1 && !mission.emergencyTriggered) {
+    mission.emergencyTriggered = true;
+    return emergencyIndex;
+  }
+  return -1;
 }
 
 function buildResult(shot, missDistance, success, ammoMatch) {
@@ -1435,15 +1610,18 @@ function buildResult(shot, missDistance, success, ammoMatch) {
   const ammoScore = ammoMatch ? 20 : -20;
   const timeScore = Math.max(0, Math.round((state.timeRemaining / mission.timeLimitSeconds) * 20));
   const score = clamp(Math.round(accuracyScore + ammoScore + timeScore), 0, 100);
+  const completed = (mission.targets || []).filter((target) => target.neutralized).length;
+  const required = (mission.targets || []).filter((target) => !target.emergency || target.neutralized || mission.emergencyTriggered).length || 1;
   return {
     success,
     missDistance,
     elapsedSeconds,
     score,
-    ammoLabel: `${ammoTypes[shot.ammoKey].label}${ammoMatch ? " / passend" : " / suboptimal"}`,
+    ammoLabel: `${ammoTypes[shot.ammoKey].label}${ammoMatch ? " / matched" : " / suboptimal"}`,
     accuracyLabel: accuracyScore >= 90 ? "Excellent" : accuracyScore >= 70 ? "Good" : accuracyScore >= 45 ? "Adequate" : "Poor",
     summary: [
-      `${mission.profile.label}: ${success ? "effect achieved" : "effect insufficient"}.`,
+      `${mission.template?.label || "Mission"}: ${success ? "effect achieved" : "effect insufficient"}.`,
+      `Targets neutralized: ${completed}/${required}.`,
       `Required ammo: ${ammoTypes[mission.requiredAmmo].label}.`,
       `Used: ${ammoTypes[shot.ammoKey].label}.`,
       `Miss: ${formatDistance(missDistance)}.`,
@@ -1741,8 +1919,9 @@ function drawEffects() {
 
 function drawRevealedTarget() {
   if (!state.revealedTarget) return;
-  const p = worldToMap(mission.targetPosition);
-  const symbol = targetSymbol(mission.profile.key);
+  const target = activeTarget();
+  const p = worldToMap(target.position);
+  const symbol = targetSymbol(target.profile.key);
   ctx.save();
   ctx.strokeStyle = "#ff3f37";
   ctx.fillStyle = "rgba(255, 63, 55, 0.26)";
@@ -1760,7 +1939,7 @@ function drawRevealedTarget() {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(symbol, p.x, p.y);
-  const label = mission.profile.label.toUpperCase();
+  const label = target.profile.label.toUpperCase();
   ctx.font = "bold 12px sans-serif";
   const labelWidth = ctx.measureText(label).width + 14;
   ctx.fillStyle = "rgba(17, 8, 7, 0.88)";
@@ -1861,16 +2040,17 @@ function startBusy(label, duration, onProgress, onComplete) {
 
 function correctionText(impact, missDistance, ammo) {
   const launchPosition = activeGunPosition();
-  const trueRange = distance2D(launchPosition, mission.targetPosition);
+  const target = activeTarget();
+  const trueRange = distance2D(launchPosition, target.position);
   const impactRange = distance2D(launchPosition, impact);
   const rangeError = impactRange - trueRange;
-  const targetBearing = bearingBetween(launchPosition, mission.targetPosition);
-  const dx = impact.x - mission.targetPosition.x;
-  const dy = impact.y - mission.targetPosition.y;
+  const targetBearing = bearingBetween(launchPosition, target.position);
+  const dx = impact.x - target.position.x;
+  const dy = impact.y - target.position.y;
   const lateral = dx * Math.cos(degToRad(targetBearing + 90)) + dy * Math.sin(degToRad(targetBearing + 90));
   const rangeText = rangeError < 0 ? "short" : "long";
   const sideText = lateral < 0 ? "left" : "right";
-  const ammoHint = ammo.penetration < mission.armor ? " AP recommended." : "";
+  const ammoHint = ammo.penetration < target.profile.armor ? " AP recommended." : "";
   return `Miss: ${formatDistance(missDistance)} off, ${formatDistance(Math.abs(rangeError))} ${rangeText}, ${formatDistance(Math.abs(lateral))} ${sideText}.${ammoHint}`;
 }
 
@@ -2217,6 +2397,16 @@ function randomBetween(min, max) {
 
 function pick(items) {
   return items[Math.floor(Math.random() * items.length)];
+}
+
+function weightedPick(items) {
+  const total = items.reduce((sum, item) => sum + (item.weight || 1), 0);
+  let roll = randomBetween(0, total);
+  for (const item of items) {
+    roll -= item.weight || 1;
+    if (roll <= 0) return item;
+  }
+  return items[items.length - 1];
 }
 
 function clamp(value, min, max) {
