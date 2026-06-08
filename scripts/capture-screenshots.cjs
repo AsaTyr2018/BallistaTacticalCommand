@@ -9,6 +9,7 @@ const chromePath = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const port = 9444;
 const url = "http://127.0.0.1:5173/";
 const profileDir = path.join(root, ".chrome-screenshots");
+const viewport = { width: 1920, height: 1080 };
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.mkdirSync(profileDir, { recursive: true });
@@ -115,6 +116,7 @@ async function main() {
     "--disable-gpu",
     "--no-first-run",
     "--no-default-browser-check",
+    `--window-size=${viewport.width},${viewport.height}`,
     `--user-data-dir=${profileDir}`,
     url,
   ], { stdio: "ignore" });
@@ -125,8 +127,8 @@ async function main() {
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
     await cdp.send("Emulation.setDeviceMetricsOverride", {
-      width: 1440,
-      height: 900,
+      width: viewport.width,
+      height: viewport.height,
       deviceScaleFactor: 1,
       mobile: false,
     });
